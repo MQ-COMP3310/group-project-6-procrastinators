@@ -36,3 +36,4 @@ You can run the website by typing:
 You can now browse to the url http://127.0.0.1:8000/ to view the website.
 
 
+wsg
