@@ -3,7 +3,7 @@ from django.urls import reverse
 from django.contrib.auth.models import User
 from datetime import date
 
-from .models import Movie, Review
+from .models import Movie, Review, UserProfile
 
 
 # Create your tests here.
@@ -36,6 +36,11 @@ class AuthenticationAuthorisationTests(TestCase):
             is_superuser=True
         )
         
+        # Regular users have adminRole=False by default
+        UserProfile.objects.create(user=self.owner, adminRole=False)
+        UserProfile.objects.create(user=self.other_user, adminRole=False)
+        UserProfile.objects.create(user=self.admin_user, adminRole=True)
+        
         self.movie = Movie.objects.create(
             name="Test Movie",
             director="Test Director",
@@ -56,7 +61,7 @@ class AuthenticationAuthorisationTests(TestCase):
         
     def test_password_not_stored_in_plaintext(self):
         """
-        Recquirement tested:
+        Requirement tested:
         Passwords must be securely hashed and must not be stored in plaintext.
         
         Expected result should show:
@@ -98,7 +103,7 @@ class AuthenticationAuthorisationTests(TestCase):
         A user that is logged in must be able to manage their own content.
         
         Expected result should show:
-        The owner can updated their own movie.
+        The owner can update their own movie.
         """
         self.client.login(username="owner", password="ChooseStrongP@ssword123!")
         
@@ -144,7 +149,7 @@ class AuthenticationAuthorisationTests(TestCase):
     def test_admin_can_edit_any_movie(self):
         """
         Requirement tested:
-        Admin must be able to edit any content.
+        Administrators must be able to edit any content.
         
         Expected result should show:
         Admin user can update a movie created by another user.
@@ -170,7 +175,7 @@ class AuthenticationAuthorisationTests(TestCase):
         Users must not be able to delete reviews they did not create.
         
         Expected result should show:
-        A non-owner receives HTTP 403 Forbidden and the review remains in the databse.
+        A non-owner receives HTTP 403 Forbidden and the review remains in the database.
         """
         self.client.login(username="otheruser", password="ChooseStrongP@ssword123!")
         url = reverse("main:delete_review", args=[self.review.id])
@@ -193,3 +198,18 @@ class AuthenticationAuthorisationTests(TestCase):
         
         self.assertIn(response.status_code, [200, 302])
         self.assertFalse(Review.objects.filter(id=self.review.id).exists())
+        
+    def test_non_owner_cannot_delete_another_users_movie(self):
+        """
+        Requirement tested:
+        Users must not be able to delete movies they did not create.
+        
+        Expected result should show:
+        A non-owner receives HTTP 403 Forbidden and the movie remains in the database.
+        """
+        self.client.login(username="otheruser", password="ChooseStrongP@ssword123!")
+        url = reverse("main:delete_movie", args=[self.movie.id])
+        response = self.client.post(url)
+        
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Movie.objects.filter(id=self.movie.id).exists())
