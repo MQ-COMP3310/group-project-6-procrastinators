@@ -3,7 +3,8 @@ from django.urls import reverse
 from django.contrib.auth.models import User
 from datetime import date
 
-from .models import Movie, Review, UserProfile
+from .models import Movie, Review, UserProfile, AuditLog
+from .utils import log_security_event
 
 
 # Create your tests here.
@@ -213,3 +214,208 @@ class AuthenticationAuthorisationTests(TestCase):
         
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Movie.objects.filter(id=self.movie.id).exists())
+
+
+# ===========================================================================
+# TEST SUITE: AUDIT LOGGING SECURITY
+# ===========================================================================
+
+class AuditLogModelTests(TestCase):
+
+    def test_logs_cannot_be_modified(self):
+        log = AuditLog.objects.create(
+            event_type='LOGIN_SUCCESS',
+            outcome='SUCCESS',
+            action_details='Original entry'
+        )
+        log.action_details = 'Tampered entry'
+        with self.assertRaises(PermissionError):
+            log.save()
+
+    def test_logs_cannot_be_deleted(self):
+        log = AuditLog.objects.create(
+            event_type='LOGIN_SUCCESS',
+            outcome='SUCCESS'
+        )
+        with self.assertRaises(PermissionError):
+            log.delete()
+
+
+class AuditLoggingFunctionTests(TestCase):
+
+    def test_successful_event_logged(self):
+        user = User.objects.create_user(
+            username='testuser',
+            password='ChooseStrongP@ssword123!'
+        )
+        log_security_event(
+            event_type='MOVIE_CREATE',
+            user=user,
+            outcome='SUCCESS',
+            affected_object_id=5,
+            affected_object_type='Movie',
+            source_ip='192.168.1.1',
+            action_details='Movie created: Test Movie'
+        )
+        log = AuditLog.objects.filter(event_type='MOVIE_CREATE').first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.outcome, 'SUCCESS')
+        self.assertEqual(log.user, user)
+        self.assertEqual(log.affected_object_id, 5)
+
+    def test_failed_event_logged(self):
+        user = User.objects.create_user(
+            username='testuser',
+            password='ChooseStrongP@ssword123!'
+        )
+        log_security_event(
+            event_type='LOGIN_FAILED',
+            user=user,
+            outcome='FAILURE',
+            source_ip='192.168.1.100',
+            action_details='Invalid password'
+        )
+        log = AuditLog.objects.filter(event_type='LOGIN_FAILED').first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.outcome, 'FAILURE')
+        self.assertEqual(log.user, user)
+
+    def test_authorization_failure_logged(self):
+        user = User.objects.create_user(
+            username='attacker',
+            password='ChooseStrongP@ssword123!'
+        )
+        log_security_event(
+            event_type='AUTHZ_FAILED',
+            user=user,
+            outcome='FAILURE',
+            affected_object_id=10,
+            affected_object_type='Movie',
+            source_ip='192.168.1.50',
+            action_details='Unauthorized attempt to edit movie 10'
+        )
+        log = AuditLog.objects.filter(event_type='AUTHZ_FAILED').first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.outcome, 'FAILURE')
+        self.assertEqual(log.affected_object_id, 10)
+
+
+class SensitiveDataProtectionTests(TestCase):
+
+    def test_no_passwords_in_logs(self):
+        log_security_event(
+            event_type='ADMIN_ACTION',
+            action_details='User password: MySecretPassword123'
+        )
+        log = AuditLog.objects.filter(event_type='ADMIN_ACTION').first()
+        self.assertNotIn('MySecretPassword123', log.action_details)
+        self.assertIn('[REDACTED]', log.action_details)
+
+    def test_no_hashes_in_logs(self):
+        log_security_event(
+            event_type='ADMIN_ACTION',
+            action_details='User hash: pbkdf2_sha256$260000$abc123def456'
+        )
+        log = AuditLog.objects.filter(event_type='ADMIN_ACTION').first()
+        self.assertNotIn('pbkdf2_sha256', log.action_details)
+        self.assertIn('[REDACTED]', log.action_details)
+
+    def test_no_tokens_in_logs(self):
+        log_security_event(
+            event_type='ADMIN_ACTION',
+            action_details='CSRF_TOKEN: abc123xyz SESSION_COOKIE: def456uvw'
+        )
+        log = AuditLog.objects.filter(event_type='ADMIN_ACTION').first()
+        self.assertNotIn('abc123xyz', log.action_details)
+        self.assertNotIn('def456uvw', log.action_details)
+        self.assertIn('[REDACTED]', log.action_details)
+
+
+class LogContextTests(TestCase):
+
+    def test_timestamp_recorded(self):
+        log = AuditLog.objects.create(
+            event_type='LOGIN_SUCCESS',
+            outcome='SUCCESS'
+        )
+        self.assertIsNotNone(log.timestamp)
+
+    def test_user_recorded(self):
+        user = User.objects.create_user(username='testuser', password='pass')
+        log_security_event(
+            event_type='LOGIN_SUCCESS',
+            user=user,
+            outcome='SUCCESS'
+        )
+        log = AuditLog.objects.filter(event_type='LOGIN_SUCCESS').first()
+        self.assertEqual(log.user, user)
+
+    def test_event_type_recorded(self):
+        log_security_event(
+            event_type='MOVIE_CREATE',
+            outcome='SUCCESS'
+        )
+        log = AuditLog.objects.filter(event_type='MOVIE_CREATE').first()
+        self.assertEqual(log.event_type, 'MOVIE_CREATE')
+
+    def test_affected_object_recorded(self):
+        log_security_event(
+            event_type='MOVIE_UPDATE',
+            affected_object_id=42,
+            affected_object_type='Movie',
+            outcome='SUCCESS'
+        )
+        log = AuditLog.objects.filter(event_type='MOVIE_UPDATE').first()
+        self.assertEqual(log.affected_object_id, 42)
+        self.assertEqual(log.affected_object_type, 'Movie')
+
+    def test_ip_address_recorded(self):
+        log_security_event(
+            event_type='LOGIN_SUCCESS',
+            outcome='SUCCESS',
+            source_ip='203.0.113.42'
+        )
+        log = AuditLog.objects.filter(event_type='LOGIN_SUCCESS').first()
+        self.assertEqual(log.source_ip, '203.0.113.42')
+
+    def test_outcome_recorded(self):
+        log_success = AuditLog.objects.create(
+            event_type='LOGIN_SUCCESS',
+            outcome='SUCCESS'
+        )
+        log_failure = AuditLog.objects.create(
+            event_type='LOGIN_FAILED',
+            outcome='FAILURE'
+        )
+        self.assertEqual(log_success.outcome, 'SUCCESS')
+        self.assertEqual(log_failure.outcome, 'FAILURE')
+
+
+class AccessControlTests(TestCase):
+
+    def test_admin_can_view_logs(self):
+        admin_user = User.objects.create_user(
+            username='admin',
+            password='ChooseStrongP@ssword123!',
+            is_staff=True
+        )
+        self.assertTrue(admin_user.is_staff)
+
+    def test_regular_user_not_admin(self):
+        regular_user = User.objects.create_user(
+            username='user',
+            password='ChooseStrongP@ssword123!',
+            is_staff=False
+        )
+        self.assertFalse(regular_user.is_staff)
+
+
+class AllEventTypesTests(TestCase):
+
+    def test_all_event_types_valid(self):
+        for event_type, _ in AuditLog.EVENT_CHOICES:
+            log = AuditLog.objects.create(
+                event_type=event_type,
+                outcome='SUCCESS'
+            )
+            self.assertEqual(log.event_type, event_type)
