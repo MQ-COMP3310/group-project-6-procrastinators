@@ -12,24 +12,12 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os.path
 from pathlib import Path
 
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-89rdcyv#gj1)06)sx&sjhn5*2_t*ohtm4(q-&qzx#gq#jgvjj4'
 
-# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-
 ALLOWED_HOSTS = []
-
-
-# Application definition
 
 INSTALLED_APPS = [
     'main',
@@ -44,6 +32,7 @@ INSTALLED_APPS = [
     'crispy_bootstrap5',
 ]
 
+# CsrfViewMiddleware: Validates CSRF token in POST requests, 5.5 CSRF
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -74,10 +63,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'moviereview.wsgi.application'
 
-
-# Database
-# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -85,44 +70,71 @@ DATABASES = {
     }
 }
 
+# PBKDF2-SHA256 accepted as default hasher, 5.1
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+]
 
-# Password validation
-# https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
-
+# Password strength validators, 5.1
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 8},
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
 
-
-# Internationalization
-# https://docs.djangoproject.com/en/4.2/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-
 USE_TZ = True
 
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/4.2/howto/static-files/
-
 STATIC_URL = 'main/static/'
-
-STATICFILES_DIRS = [
-    STATIC_URL,
-]
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
+STATICFILES_DIRS = [STATIC_URL]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
+
+# LOGIN_URL set: @login_required redirects to correct page, 5.3
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'
+
+# SESSION_COOKIE_HTTPONLY=True: Blocks XSS hijacking, 5.5 Session Security
+SESSION_COOKIE_HTTPONLY = True
+
+# SESSION_COOKIE_SECURE=True in production: HTTPS only, 5.2
+SESSION_COOKIE_SECURE = not DEBUG
+
+# SESSION_COOKIE_SAMESITE='Strict': Blocks CSRF even with middleware incorrectly configured, 5.5
+SESSION_COOKIE_SAMESITE = 'Strict'
+
+# 30-minute idle session timeout, 5.5 Session Security
+SESSION_COOKIE_AGE = 1800
+SESSION_SAVE_EVERY_REQUEST = True
+
+# SECURE_SSL_REDIRECT=True in production: HTTP redirected to HTTPS, 5.2
+SECURE_SSL_REDIRECT = not DEBUG
+
+# HSTS with one-year duration, subdomains, preload, 5.2
+SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
+
+# CSRF_COOKIE_SECURE=True in production, 5.5 CSRF
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_HTTPONLY = True
+
+# CSRF_COOKIE_SAMESITE='Strict'; Principle: Defence in Depth
+CSRF_COOKIE_SAMESITE = 'Strict'

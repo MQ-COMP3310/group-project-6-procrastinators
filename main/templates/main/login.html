@@ -1,0 +1,49 @@
+{% extends 'main/base.html' %}
+{% block content %}
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-5">
+      <div class="card shadow">
+        <div class="card-body p-4">
+          <h3 class="text-center mb-4">Login</h3>
+
+          {# Error message explaining why field-level errors are absent, 5.5 Rate Limiting #}
+          {% if messages %}
+            {% for message in messages %}
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+          {% endif %}
+
+          {# {% csrf_token %} on all state-changing forms, 5.5 CSRF #}
+          <form method="POST" action="{% url 'main:login' %}">
+            {% csrf_token %}
+            {% if request.GET.next %}
+              <input type="hidden" name="next" value="{{ request.GET.next }}">
+            {% endif %}
+            <div class="mb-3">
+              <label for="id_username" class="form-label">Username</label>
+              <input type="text" name="username" id="id_username"
+                class="form-control" autocomplete="username" maxlength="150" required>
+            </div>
+            <div class="mb-3">
+              <label for="id_password" class="form-label">Password</label>
+              <input type="password" name="password" id="id_password"
+                class="form-control" autocomplete="current-password" maxlength="128" required>
+            </div>
+            <div class="d-grid">
+              <button type="submit" class="btn btn-primary">Login</button>
+            </div>
+          </form>
+          <hr>
+          <p class="text-center mb-0">
+            Don't have an account? <a href="{% url 'main:register' %}">Register</a>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

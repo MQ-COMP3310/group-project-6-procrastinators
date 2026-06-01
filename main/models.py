@@ -1,62 +1,38 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 
-class AuditLog(models.Model):
-    EVENT_CHOICES = [
-        ('LOGIN_SUCCESS', 'Successful Login'),
-        ('LOGIN_FAILED', 'Failed Login Attempt'),
-        ('LOGOUT', 'Logout'),
-        ('MOVIE_CREATE', 'Movie Created'),
-        ('MOVIE_UPDATE', 'Movie Updated'),
-        ('MOVIE_DELETE', 'Movie Deleted'),
-        ('REVIEW_CREATE', 'Review Created'),
-        ('REVIEW_UPDATE', 'Review Updated'),
-        ('REVIEW_DELETE', 'Review Deleted'),
-        ('AUTHZ_FAILED', 'Failed Authorization Attempt'),
-        ('ADMIN_ACTION', 'Administrator Action'),
-    ]
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    # adminRole=False default: Least Privilege Principle, 5.4 Proper Access Control
+    adminRole = models.BooleanField(default=False)
+    # failed_attempts counter stored server-side, 5.5 Rate Limiting
+    failed_attempts = models.IntegerField(default=0)
+    # lockout_until uses real-time not a counter, 5.5 Rate Limiting
+    lockout_until = models.DateTimeField(null=True, blank=True)
 
-    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
-    event_type = models.CharField(
-        max_length=20,
-        choices=EVENT_CHOICES,
-        db_index=True
-    )
-    user = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True
-    )
-    outcome = models.CharField(
-        max_length=10,
-        choices=[('SUCCESS', 'Success'), ('FAILURE', 'Failure')]
-    )
-    affected_object_id = models.IntegerField(null=True, blank=True)
-    affected_object_type = models.CharField(max_length=20, blank=True)
-    source_ip = models.GenericIPAddressField(null=True, blank=True)
-    action_details = models.TextField(blank=True)
+    def is_locked_out(self):
+        # is_locked_out() fails closed in edge cases; Principle: Fail Secure
+        if self.lockout_until is None:
+            return False
+        return timezone.now() < self.lockout_until
 
-    class Meta:
-        ordering = ['-timestamp']
-        verbose_name = 'Audit Log'
-        verbose_name_plural = 'Audit Logs'
+    def record_failed_attempt(self):
+        # Account locked for 15 minutes after 5 failed attempts, 5.5 Rate Limiting
+        self.failed_attempts += 1
+        if self.failed_attempts >= 5:
+            self.lockout_until = timezone.now() + timezone.timedelta(minutes=15)
+        self.save()
 
-    def save(self, *args, **kwargs):
-        if self.pk is not None:
-            raise PermissionError('Audit logs cannot be modified (append-only)')
-        super().save(*args, **kwargs)
-
-    def delete(self, *args, **kwargs):
-        raise PermissionError('Audit logs cannot be deleted (immutable)')
-
-    def __str__(self):
-        return f"{self.get_event_type_display()} - {self.timestamp}"
+    def reset_failed_attempts(self):
+        # Reset counter and lockout on successful authentication
+        self.failed_attempts = 0
+        self.lockout_until = None
+        self.save()
 
 
 class Movie(models.Model):
-    # Fields for the movie table
     name = models.CharField(max_length=300)
     director = models.CharField(max_length=300)
     cast = models.CharField(max_length=300)
@@ -64,15 +40,46 @@ class Movie(models.Model):
     description = models.TextField(max_length=5000)
     rating = models.FloatField(default=0)
     image = models.URLField(default=None, null=True)
+    # created_by uses SET_NULL: No orphaned ownership, 5.4 Access Control
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_movies'
+    )
+    # null=True allows existing fixture data to load without this field, 5.4
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    # modified_by tracks who last edited, 5.4 Access Control
+    modified_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='modified_movies'
+    )
+    # modified_at auto-updates on save() for audit trail, 5.4
+    modified_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
     def __str__(self):
         return self.name
+
 
 class Review(models.Model):
     movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
     comment = models.TextField(max_length=1000, null=True)
     rating = models.FloatField(default=0)
+    # created_by uses CASCADE: Prevents NULL ownership exploit, 5.4 Access Control
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='reviews'
+    )
+    # null=True allows existing fixture data to load without this field, 5.4
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    modified_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
     def __str__(self):
         return self.movie.name
-

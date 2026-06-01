@@ -1,0 +1,25 @@
+{% extends 'main/base.html' %}
+{% load crispy_forms_tags %}
+{% block content %}
+<div class="container mt-4">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card shadow">
+        <div class="card-body p-4">
+          <h3 class="text-center mb-4">Edit Review</h3>
+          <h5 class="text-center text-muted mb-3">{{ review.movie.name }}</h5>
+          {# {% csrf_token %} on all state-changing forms, 5.5 CSRF #}
+          <form method="POST" action="{% url 'main:edit_review' review.id %}">
+            {% csrf_token %}
+            {{ form | crispy }}
+            <div class="d-flex gap-2 mt-3">
+              <button type="submit" class="btn btn-warning">Save Changes</button>
+              <a href="{% url 'main:details' review.movie.id %}" class="btn btn-secondary">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

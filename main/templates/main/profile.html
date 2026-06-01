@@ -1,0 +1,31 @@
+{% extends 'main/base.html' %}
+{% block content %}
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card shadow">
+        <div class="card-body p-4">
+          <h3 class="text-center mb-4">My Profile</h3>
+          <table class="table">
+            <tr><th>Username</th><td>{{ user.username }}</td></tr>
+            <tr><th>Email</th><td>{{ user.email }}</td></tr>
+            <tr>
+              <th>Role</th>
+              <td>
+                {# Separation of Privilege: admin role displayed separately, 5.5 #}
+                {% if user.is_staff or user.profile.adminRole %}
+                  <span class="badge bg-danger">Administrator</span>
+                {% else %}
+                  <span class="badge bg-secondary">User</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr><th>Member since</th><td>{{ user.date_joined|date:"d M Y" }}</td></tr>
+          </table>
+          <a href="{% url 'main:home' %}" class="btn btn-primary">Back to Home</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

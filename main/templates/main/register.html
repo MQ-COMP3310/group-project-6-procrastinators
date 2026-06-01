@@ -1,0 +1,37 @@
+{% extends 'main/base.html' %}
+{% load crispy_forms_tags %}
+{% block content %}
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card shadow">
+        <div class="card-body p-4">
+          <h3 class="text-center mb-4">Create Account</h3>
+
+          {% if messages %}
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+          {% endif %}
+
+          {# {% csrf_token %} on all state-changing forms, 5.5 CSRF #}
+          <form method="POST" action="{% url 'main:register' %}">
+            {% csrf_token %}
+            {{ form | crispy }}
+            <div class="d-grid mt-3">
+              <button type="submit" class="btn btn-success">Register</button>
+            </div>
+          </form>
+          <hr>
+          <p class="text-center mb-0">
+            Already have an account? <a href="{% url 'main:login' %}">Login</a>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
