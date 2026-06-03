@@ -1,11 +1,12 @@
 from .models import AuditLog
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 
 def log_security_event(event_type, user=None, outcome='SUCCESS',
-                       affected_object_id=None, affected_object_type=None,
+                       affected_object_id=None, affected_object_type='',
                        source_ip=None, action_details=''):
     try:
         if event_type not in dict(AuditLog.EVENT_CHOICES):
@@ -42,11 +43,11 @@ def sanitize_log_details(details):
     ]
 
     for keyword in sensitive_keywords:
-        if keyword.lower() in details.lower():
-            details = details.replace(
-                keyword + ':',
-                keyword + ': [REDACTED]'
-            )
+        pattern = re.compile(
+            rf'\w*{re.escape(keyword)}\w*\s*:\s*\S+',
+            re.IGNORECASE
+        )
+        details = pattern.sub(f'{keyword}: [REDACTED]', details)
 
     return details
 
