@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from unittest.mock import patch
 from datetime import date
+
 from .models import Movie, Review, UserProfile, AuditLog
 from .utils import log_security_event
 from .validators import (
@@ -29,37 +30,37 @@ from .forms import MovieForm, ReviewForm
 class AuthenticationAuthorisationTests(TestCase):
     """
     Task 7b): Security tests for the authentication and authorisation mechanism
-
+    
     These tests are for the Part 2 security requirements:
     - Users must be able to manage their own content.
     - Users must not be able to edit or delete content they did not create.
     - Administrators must be able to edit or delete any content.
     - Passwords must not be stored in plaintext.
     """
-
+    
     def setUp(self):
         self.owner = User.objects.create_user(
             username="owner",
             password="ChooseStrongP@ssword123!"
         )
-
+        
         self.other_user = User.objects.create_user(
             username="otheruser",
             password="ChooseStrongP@ssword123!"
         )
-
+        
         self.admin_user = User.objects.create_user(
             username="admin",
             password="ChooseStrongP@ssword123!",
             is_staff=True,
             is_superuser=True
         )
-
+        
         # Regular users have adminRole=False by default
         UserProfile.objects.create(user=self.owner, adminRole=False)
         UserProfile.objects.create(user=self.other_user, adminRole=False)
         UserProfile.objects.create(user=self.admin_user, adminRole=True)
-
+        
         self.movie = Movie.objects.create(
             name="Test Movie",
             director="Test Director",
@@ -70,59 +71,59 @@ class AuthenticationAuthorisationTests(TestCase):
             image="https://example.com/test-image.jpg",
             created_by=self.owner
         )
-
+        
         self.review = Review.objects.create(
             movie=self.movie,
             comment="Test Review",
             rating=7.0,
             created_by=self.owner
         )
-
+        
     def test_password_not_stored_in_plaintext(self):
         """
         Requirement tested:
         Passwords must be securely hashed and must not be stored in plaintext.
-
+        
         Expected result should show:
         The stored password value should not be the same as the raw password.
         """
         user = User.objects.create_user(
             username="testuser",
             password="ChooseStrongP@ssword123!"
-        )
-
+        )    
+        
         self.assertNotEqual(user.password, "ChooseStrongP@ssword123!")
         self.assertTrue(user.password.startswith("pbkdf2_sha256$"))
-
+        
     def test_anonymous_user_cannot_add_movie(self):
         """
         Requirement tested:
         A user that is not logged in must not be able to add any content.
-
+        
         Expected result should show:
         Anonymous user should be redirected to the login page or denied access.
         """
         url = reverse("main:add_movies")
-
+        
         response = self.client.post(url, {
             "name": "Unauthorised Movie",
-            "director": "Unknown",
+            "director": "Unknown", 
             "cast": "Unknown",
             "release_date": "2026-05-20",
             "description": "This should not be created.",
             "image": "https://example.com/not-good.jpg"
         })
-
+        
         self.assertIn(response.status_code, [302, 403])
         self.assertFalse(Movie.objects.filter(name="Unauthorised Movie").exists())
-
-    @patch('main.validators.fetch_and_validate_image_url')
+        
+    @patch('main.forms.fetch_and_validate_image_url')
     def test_owner_can_edit_their_own_movie(self, mock_fetch):
         mock_fetch.return_value = None
         self.client.login(username="owner", password="ChooseStrongP@ssword123!")
-
+    
         url = reverse("main:edit_movie", args=[self.movie.id])
-
+    
         response = self.client.post(url, {
             "name": "Updated Movie",
             "director": "Updated Director",
@@ -131,17 +132,17 @@ class AuthenticationAuthorisationTests(TestCase):
             "description": "Updated description",
             "image": "https://example.com/updated.jpg"
         })
-
+    
         self.movie.refresh_from_db()
-
+    
         self.assertIn(response.status_code, [200, 302])
         self.assertEqual(self.movie.name, "Updated Movie")
-
+        
     def test_non_owner_cannot_edit_another_users_movie(self):
         """
         Requirement tested:
         Users must not be able to edit content they did not create.
-
+        
         Expected results should show:
         A non-owner receives HTTP 403 Forbidden and the movie remains unchanged.
         """
@@ -150,17 +151,17 @@ class AuthenticationAuthorisationTests(TestCase):
         response = self.client.post(url, {
             "name": "Malicious Update",
             "director": "Changed Director",
-            "cast": "Changed Cast",
+            "cast": "Changed Cast", 
             "release_date": "2000-01-01",
             "description": "This should not be saved.",
             "image": "https://example.com/changed.jpg"
-        })
-
+        })    
+        
         self.movie.refresh_from_db()
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.movie.name, "Test Movie")
-
-    @patch('main.validators.fetch_and_validate_image_url')
+        
+    @patch('main.forms.fetch_and_validate_image_url')
     def test_admin_can_edit_any_movie(self, mock_fetch):
         mock_fetch.return_value = None
         self.client.login(username="admin", password="ChooseStrongP@ssword123!")
@@ -173,53 +174,53 @@ class AuthenticationAuthorisationTests(TestCase):
             "description": "Admin update",
             "image": "https://example.com/admin.jpg"
         })
-
+    
         self.movie.refresh_from_db()
         self.assertIn(response.status_code, [200, 302])
         self.assertEqual(self.movie.name, "Admin Updated Movie")
-
+        
     def test_non_owner_cannot_delete_another_users_review(self):
         """
         Requirement tested:
         Users must not be able to delete reviews they did not create.
-
+        
         Expected result should show:
         A non-owner receives HTTP 403 Forbidden and the review remains in the database.
         """
         self.client.login(username="otheruser", password="ChooseStrongP@ssword123!")
         url = reverse("main:delete_review", args=[self.review.id])
         response = self.client.post(url)
-
+        
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Review.objects.filter(id=self.review.id).exists())
-
+        
     def test_admin_can_delete_any_review(self):
         """
         Requirement tested:
         Admin must be able to delete any content.
-
+        
         Expected result should show:
         Admin user can delete a review created by another user.
         """
         self.client.login(username="admin", password="ChooseStrongP@ssword123!")
         url = reverse("main:delete_review", args=[self.review.id])
         response = self.client.post(url)
-
+        
         self.assertIn(response.status_code, [200, 302])
         self.assertFalse(Review.objects.filter(id=self.review.id).exists())
-
+        
     def test_non_owner_cannot_delete_another_users_movie(self):
         """
         Requirement tested:
         Users must not be able to delete movies they did not create.
-
+        
         Expected result should show:
         A non-owner receives HTTP 403 Forbidden and the movie remains in the database.
         """
         self.client.login(username="otheruser", password="ChooseStrongP@ssword123!")
         url = reverse("main:delete_movie", args=[self.movie.id])
         response = self.client.post(url)
-
+        
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Movie.objects.filter(id=self.movie.id).exists())
 
@@ -227,7 +228,9 @@ class AuthenticationAuthorisationTests(TestCase):
 # ===========================================================================
 # TEST SUITE: AUDIT LOGGING SECURITY
 # ===========================================================================
+
 class AuditLogModelTests(TestCase):
+
     def test_logs_cannot_be_modified(self):
         log = AuditLog.objects.create(
             event_type='LOGIN_SUCCESS',
@@ -248,6 +251,7 @@ class AuditLogModelTests(TestCase):
 
 
 class AuditLoggingFunctionTests(TestCase):
+
     def test_successful_event_logged(self):
         user = User.objects.create_user(
             username='testuser',
@@ -306,6 +310,7 @@ class AuditLoggingFunctionTests(TestCase):
 
 
 class SensitiveDataProtectionTests(TestCase):
+
     def test_no_passwords_in_logs(self):
         log_security_event(
             event_type='ADMIN_ACTION',
@@ -336,6 +341,7 @@ class SensitiveDataProtectionTests(TestCase):
 
 
 class LogContextTests(TestCase):
+
     def test_timestamp_recorded(self):
         log = AuditLog.objects.create(
             event_type='LOGIN_SUCCESS',
@@ -395,6 +401,7 @@ class LogContextTests(TestCase):
 
 
 class AccessControlTests(TestCase):
+
     def test_admin_can_view_logs(self):
         admin_user = User.objects.create_user(
             username='admin',
@@ -413,6 +420,7 @@ class AccessControlTests(TestCase):
 
 
 class AllEventTypesTests(TestCase):
+
     def test_all_event_types_valid(self):
         for event_type, _ in AuditLog.EVENT_CHOICES:
             log = AuditLog.objects.create(
@@ -425,12 +433,14 @@ class AllEventTypesTests(TestCase):
 # ===========================================================================
 # TEST SUITE: INPUT VALIDATION SECURITY
 # ===========================================================================
+
 class URLSchemeValidationTests(TestCase):
     """
     Requirement tested:
     Deny insecure web protocols and accept https:// and optionally http:// only.
     (Section 8.1.2)
     """
+
     def test_https_url_is_accepted(self):
         """HTTPS URLs must be allowed."""
         try:
@@ -472,6 +482,7 @@ class SSRFPreventionTests(TestCase):
     Do not fetch private resources from inside the system.
     Blacklist on localhost, 127.0.0.0/8, 10.0.0.0/8 etc. (Section 8.1.2)
     """
+
     def _mock(self, ip):
         return [(None, None, None, None, (ip, 0))]
 
@@ -519,6 +530,7 @@ class ImageSizeLimitTests(TestCase):
     Place limits upon external resource size. Without checking size, a DoS
     can be achieved via a profoundly large image. (Section 8.1.2)
     """
+
     def test_image_within_size_limit_is_accepted(self):
         """Images within MAX_IMAGE_BYTES must be accepted."""
         data = b'\xff\xd8\xff' + b'\x00' * 100
@@ -549,6 +561,7 @@ class MagicByteValidationTests(TestCase):
     file extension or Content-Type (can be spoofed). Checking magic bytes
     is more effective. (Section 8.1.2)
     """
+
     def test_valid_jpeg_accepted(self):
         """JPEG files (FF D8 FF) must be accepted."""
         try:
@@ -604,6 +617,7 @@ class FieldLengthValidationTests(TestCase):
     Maximum sizes for data input dependent on context. Not even the longest
     movie name should exceed 250 characters. (Section 8.1.2)
     """
+
     def test_movie_name_within_limit_accepted(self):
         try:
             validate_movie_name('A' * MAX_MOVIE_NAME_LEN)
@@ -643,6 +657,7 @@ class RatingValidationTests(TestCase):
     must be performed. The rating HTML min/max attribute can be changed via
     browser Inspector (Section 8.1.2 example).
     """
+
     def test_rating_within_bounds_accepted(self):
         """Ratings between 1 and 10 must be accepted."""
         for value in (1, 5, 10, 1.0, 9.9):
@@ -679,6 +694,7 @@ class XSSValidationTests(TestCase):
     Validate and sanitise vectors for XSS attacks. Everything on the site
     persists in a database and is readable by anyone. (Section 8.1.2)
     """
+
     def test_plain_text_accepted(self):
         try:
             validate_no_script_tag("The Dark Knight is a great film.")
@@ -724,6 +740,7 @@ class ReviewFormValidationTests(TestCase):
     Server-side validation for all form fields; client-side attributes are
     not trusted. (Section 8.1.2)
     """
+
     def test_valid_review_form_passes(self):
         """A well-formed review must pass form validation."""
         form = ReviewForm(data={'comment': 'Great film!', 'rating': 8})
@@ -762,6 +779,7 @@ class MovieFormValidationTests(TestCase):
     Requirement tested:
     Server-side validation for all Movie form fields. (Section 8.1.2)
     """
+
     def _base(self, **overrides):
         data = {
             'name': 'Test Movie', 'director': 'Test Director',
@@ -832,7 +850,7 @@ class MovieFormValidationTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('image', form.errors)
 
-    @patch('main.validators.fetch_and_validate_image_url')
+    @patch('main.forms.fetch_and_validate_image_url')
     def test_valid_image_url_accepted(self, mock_fetch):
         """A valid HTTPS URL pointing to a recognised image must be accepted."""
         mock_fetch.return_value = None
